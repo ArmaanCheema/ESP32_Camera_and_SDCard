@@ -39,9 +39,10 @@
 #define LED_PIN 2
 //#define RGB_LED_PIN 48
 
-static int IMAGE_COUNT = 0;
+static int IMAGE_COUNT = 0; //Image count for naming files
+// uint32_t gImageCount = 0;
 
-#define TAG "CameraSDTest"
+// #define TAG "CameraSDTest"
 
 void init_camera(void){
     camera_config_t config = {
@@ -68,7 +69,7 @@ void init_camera(void){
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_SVGA,// UXGA|SXGA|XGA|SVGA|VGA|CIF|QVGA|HQVGA|QQVGA
+        .frame_size = FRAMESIZE_UXGA,// UXGA|SXGA|XGA|SVGA|VGA|CIF|QVGA|HQVGA|QQVGA
         .fb_location = CAMERA_FB_IN_PSRAM,
         .grab_mode = CAMERA_GRAB_LATEST,
         .jpeg_quality = 2, //0-63 lower number means higher quality
@@ -84,7 +85,7 @@ void init_camera(void){
     //Check if actually captures the frame
     camera_fb_t * fb = esp_camera_fb_get();
     if (!fb || fb->len == 0) {
-        ESP_LOGE(TAG, "Camera capture failed");
+        ESP_LOGE("Camera", "Camera capture failed");
         return;
     }
 }
@@ -162,7 +163,7 @@ void setup_extras(void){
 void capture_and_save(void){
     //Indicate capture in progress
     gpio_set_level(LED_PIN, 1);
-
+ 
     //Grabs frame (using the way we defined above)
     camera_fb_t * fb = esp_camera_fb_get();
     if (!fb || fb->buf == 0) {
@@ -171,8 +172,8 @@ void capture_and_save(void){
     }
 
     //Goes to location image will be stored in
-    char filename[64];
-    snprintf(filename, sizeof(filename), "/sdcard/image_%03d.jpg", IMAGE_COUNT);
+    char filename[21];
+    snprintf(filename, sizeof(filename), "/sdcard/image_%02d.jpg", IMAGE_COUNT);
     FILE *file = fopen(filename, "wb");
     if (!file) {
         ESP_LOGE("SD Card", "Failed to open file for writing");
@@ -184,12 +185,12 @@ void capture_and_save(void){
     fwrite(fb->buf, 1, fb->len, file); //Writes the raw JPEG data buffer to the sdcard
     fclose(file);
     esp_camera_fb_return(fb);
-    ESP_LOGI("SD Card", "Image saved to /sdcard/image_[COUNT].jpg");
+    ESP_LOGI("SD Card", "Image saved to /sdcard/image_%d.jpg", IMAGE_COUNT);
 
     //Indicate capture finished
     gpio_set_level(LED_PIN, 0);
     ESP_LOGI("Main", "Full Capture Successful");
-
+    ESP_LOGI("Image Count", "%d", ++IMAGE_COUNT);
 }
 
 /* Pin 48 RGB LED
@@ -217,7 +218,7 @@ led_strip_handle_t init_led(void){
 */
 
 bool IO0_pressed(void){
-    return gpio_get_level(GPIO_NUM_0) == 0; //When press IO0 is low, Low = 0
+    return gpio_get_level(GPIO_NUM_0) == 0; //Button Pressed = IO0 Pulled Low,   Low = 0
 }
 
 void app_main(void){
@@ -227,12 +228,15 @@ void app_main(void){
     ESP_LOGI("Main", "All initialized");
 
     //Give time for the whitebalance to work
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(1000));            //TODO: Make usre
 
-    capture_and_save();
-    ESP_LOGI("Main", "capture_and_save returned to Main");
 
-    /*/Action On Press of BOOT/IO0 button
+    // capture_and_save();
+    // ESP_LOGI("Main", "capture_and_save returned to Main");
+
+    
+
+    //Action On Press of BOOT/IO0 button
     bool wasPressed = false;
     while (true){
         bool isPressed = IO0_pressed();
@@ -241,7 +245,5 @@ void app_main(void){
         }
         wasPressed = isPressed;
         vTaskDelay(pdMS_TO_TICKS(10));
-    }*/
-    
-
+    }
 }
