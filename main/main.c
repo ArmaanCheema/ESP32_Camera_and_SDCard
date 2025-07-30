@@ -7,6 +7,7 @@
 #include "sdmmc_cmd.h"          //sdcard support (SDMMC control)
 #include "driver/sdmmc_host.h"  //      ""
 #include "driver/gpio.h"        //GPIO control
+#include "cam_hal.h"            //camera commands
 //#include "led_strip.h"          //for on board RGB LED
 //#include "driver/rmt.h"         //for controls for the LED
 
@@ -88,6 +89,9 @@ void init_camera(void){
         ESP_LOGE("Camera", "Camera capture failed");
         return;
     }
+
+    //stop camera from constantly running and capturing frames
+    cam_stop();
 }
 
 void init_sdcard(void){
@@ -163,11 +167,14 @@ void setup_extras(void){
 void capture_and_save(void){
     //Indicate capture in progress
     gpio_set_level(LED_PIN, 1);
- 
-    //Grabs frame (using the way we defined above)
-    camera_fb_t * fb = esp_camera_fb_get();
+    
+    cam_start(); //Starts sensor 
+    camera_fb_t * fb = cam_take(pdMS_TO_TICKS(1000)); //Gets frame
+    cam_stop(); //Stops sensor
+
+    //Checks if fb exists
     if (!fb || fb->buf == 0) {
-        ESP_LOGE("Camera", "Camera capture failed");
+        ESP_LOGE("FB", "Failed to grab frame buffer");
         return;
     }
 
@@ -177,14 +184,14 @@ void capture_and_save(void){
     FILE *file = fopen(filename, "wb");
     if (!file) {
         ESP_LOGE("SD Card", "Failed to open file for writing");
-        esp_camera_fb_return(fb);
+        cam_give(fb);
         return;
     }
 
     //Takes frame and writes the image in the sdcard
     fwrite(fb->buf, 1, fb->len, file); //Writes the raw JPEG data buffer to the sdcard
     fclose(file);
-    esp_camera_fb_return(fb);
+    cam_give(fb);
     ESP_LOGI("SD Card", "Image saved to /sdcard/image_%d.jpg", IMAGE_COUNT);
 
     //Indicate capture finished
@@ -221,20 +228,31 @@ bool IO0_pressed(void){
     return gpio_get_level(GPIO_NUM_0) == 0; //Button Pressed = IO0 Pulled Low,   Low = 0
 }
 
-void app_main(void){
+void init_board(void){
+
+    //Setting up. Not ready for inputs. (Light ON)
+    gpio_set_level(LED_PIN, 1);
+
     init_camera();
     init_sdcard();
     setup_extras();
-    ESP_LOGI("Main", "All initialized");
 
     //Give time for the whitebalance to work
-    vTaskDelay(pdMS_TO_TICKS(1000));            //TODO: Make usre
+    vTaskDelay(pdMS_TO_TICKS(1000));
 
+    //Setup complete. Ready for input. (LED OFF)
+    gpio_set_level(LED_PIN, 0);
+    ESP_LOGI("Main", "All initialized");
 
+}
+
+void app_main(void){
+
+    init_board();
+    
+    // Takes photo on start up
     // capture_and_save();
     // ESP_LOGI("Main", "capture_and_save returned to Main");
-
-    
 
     //Action On Press of BOOT/IO0 button
     bool wasPressed = false;
@@ -244,6 +262,6 @@ void app_main(void){
             capture_and_save();
         }
         wasPressed = isPressed;
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
